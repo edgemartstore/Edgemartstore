@@ -1,0 +1,188 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Registered customer or administrator, identifying their role and contact details.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique Firebase Auth User ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human name of the user"
+        },
+        "email": {
+          "type": "string",
+          "description": "Primary email address associated with the account"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin"],
+          "description": "The security role determining app access"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when user was created"
+        }
+      },
+      "required": ["id", "name", "email", "role", "createdAt"]
+    },
+    "Product": {
+      "title": "Store Product",
+      "description": "A grocery item available for bulk purchase in Edge Mart.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique product ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Product name"
+        },
+        "price": {
+          "type": "number",
+          "description": "Unit price of the product"
+        },
+        "category": {
+          "type": "string",
+          "description": "The budget-monitored grocery category this item belongs to"
+        },
+        "image": {
+          "type": "string",
+          "description": "Cloudinary image hosting URL"
+        },
+        "stock": {
+          "type": "integer",
+          "description": "Quantity currently available in inventory"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the product"
+        }
+      },
+      "required": ["id", "name", "price", "category", "image", "stock", "description"]
+    },
+    "Category": {
+      "title": "Grocery Category",
+      "description": "A budget category containing multiple products and maintaining a spent ledger.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Category key or slug (e.g. fresh-produce)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the category (e.g. Fresh Produce)"
+        },
+        "budget": {
+          "type": "number",
+          "description": "Assigned monetary limit for the entire category"
+        },
+        "spent": {
+          "type": "number",
+          "description": "Aggregated sum spent in this category across all completed, approved orders"
+        }
+      },
+      "required": ["id", "name", "budget", "spent"]
+    },
+    "Order": {
+      "title": "Customer Order",
+      "description": "A receipt document tracking items purchased, total spends, and category allocations.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique order receipt ID"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Customer Firebase user ID"
+        },
+        "items": {
+          "type": "array",
+          "description": "Serialized list of products purchased with price and quantity"
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Grand total price of the purchase"
+        },
+        "categoryBreakdown": {
+          "type": "object",
+          "description": "Calculated expenditure totals grouped by grocery category"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when purchase was recorded"
+        }
+      },
+      "required": ["id", "userId", "items", "totalAmount", "categoryBreakdown", "createdAt"]
+    },
+    "AdminLog": {
+      "title": "Admin Security Audit Log",
+      "description": "Security audit record logging authentication and access events.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique log identifier"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the participant"
+        },
+        "eventType": {
+          "type": "string",
+          "description": "Type of event (login_success, login_failed, etc.)"
+        },
+        "details": {
+          "type": "string",
+          "description": "Audit details or error diagnostic"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the security event"
+        }
+      },
+      "required": ["id", "email", "eventType", "details", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Core profile store. Access strictly managed by Owner or Admin."
+    },
+    "products/{productId}": {
+      "schema": {
+        "$ref": "#/entities/Product"
+      },
+      "description": "Public retail browseable products catalogue."
+    },
+    "categories/{categoryId}": {
+      "schema": {
+        "$ref": "#/entities/Category"
+      },
+      "description": "Operational budget ledgers updated on checkout validation."
+    },
+    "orders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/Order"
+      },
+      "description": "Order records. Read-restricted to owner and admin."
+    },
+    "admin_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/AdminLog"
+      },
+      "description": "Immutable security logs for admin audit tracking."
+    }
+  }
+}

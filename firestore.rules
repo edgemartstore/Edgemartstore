@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default Deny-All Core Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Hardened Global Helper Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Resolves Admin privileges via token email or cloud DB role lookup
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == "edgemartstores.site@gmail.com" && request.auth.token.email_verified == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+      );
+    }
+
+    // Helper to validate generic string attributes and sizes to prevent wallet-drain attacks
+    function isValidString(val, max_size) {
+      return val is string && val.size() <= max_size;
+    }
+
+    // Helper to validate Standard IDs format and limits
+    function isValidId(id) {
+      return id is string && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\\\-]+$');
+    }
+
+    // --- COLLECTION 1: User Profiles ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && (request.auth.uid == userId) && 
+                      request.resource.data.keys().hasAll(['id', 'email', 'name', 'role', 'createdAt']) && 
+                      (request.resource.data.role == "user" || 
+                       (request.resource.data.role == "admin" && 
+                        (request.auth.token.email == "edgemartstores.site@gmail.com" && request.auth.token.email_verified == true)));
+      allow update: if isOwner(userId) && 
+                      // Forbids changing the role or id parameters
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'id', 'email', 'createdAt']) || 
+                    isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // --- COLLECTION 2: Wholesale Products Products ---
+    match /products/{productId} {
+      allow get, list: if true; // Products must be visible to visitors
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        // Customers are ONLY permitted to decrement inventory stock during checkouts
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) && 
+        request.resource.data.stock is int && 
+        request.resource.data.stock >= 0 && 
+        request.resource.data.stock < resource.data.stock
+      );
+    }
+
+    // --- COLLECTION 3: Sector Categories Budgets ---
+    match /categories/{categoryId} {
+      allow get, list: if true; // Visible to everyone to check active boundaries
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        // Customers are ONLY permitted to increment Spent balance during checkouts
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['spent']) && 
+        request.resource.data.spent is number && 
+        request.resource.data.spent >= resource.data.spent
+      );
+    }
+
+    // --- COLLECTION 4: Procurement Orders ---
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && 
+                      request.resource.data.userId == request.auth.uid && 
+                      request.resource.data.status == "pending"; // Default state is protected
+      allow update, delete: if isAdmin();
+    }
+
+    // --- COLLECTION 5: Transfer Payment Receipts ---
+    match /paymentReceipts/{receiptId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && 
+                      request.resource.data.userId == request.auth.uid && 
+                      request.resource.data.status == "pending"; 
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // --- COLLECTION 6: Helpdesk Conversations ---
+    match /support_conversations/{convoId} {
+      allow get: if isOwner(convoId) || isAdmin();
+      allow list: if isAdmin() || (isSignedIn() && convoId == request.auth.uid);
+      allow create: if isSignedIn() && (request.auth.uid == convoId || request.resource.data.userId == request.auth.uid);
+      allow update: if isOwner(convoId) || isAdmin();
+      allow delete: if isAdmin();
+
+      // Nested chat thread messages
+      match /messages/{msgId} {
+        allow get, list: if isOwner(convoId) || isAdmin();
+        allow create: if isSignedIn() && (
+          (request.auth.uid == convoId && request.resource.data.senderId == request.auth.uid) ||
+          (isAdmin() && request.resource.data.senderId == "admin")
+        );
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // --- COLLECTION 7: Live User Notifications ---
+    match /notifications/{notifId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn(); // Notifications are generated as a system/client feedback
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']); // Buyers can clear notifications
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // --- COLLECTION 8: Immutable Security Audit Logs ---
+    match /admin_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if true; // Security events can be appended at any stage of login
+      allow update, delete: if false; // Logs are strictly immutable
+    }
+  }
+}

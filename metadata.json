@@ -1,0 +1,6 @@
+{
+  "name": "Edge Mart",
+  "description": "A full-stack premium wholesale grocery e-commerce platform with dynamic customer category budget controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
